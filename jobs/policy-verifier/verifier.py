@@ -135,6 +135,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Nebius Policy Verifier")
     parser.add_argument('--self-test', action='store_true', help="Run automated self-test suite")
     parser.add_argument('--payload', type=str, help="JSON input payload containing frame and command")
+    parser.add_argument('--file', type=str, help="Path to a JSON file containing frame and command")
 
     args = parser.parse_args()
 
@@ -144,6 +145,9 @@ if __name__ == '__main__':
 
     if args.payload:
         data = json.loads(args.payload)
+    elif args.file:
+        with open(args.file, 'r', encoding='utf-8-sig') as handle:
+            data = json.load(handle)
     else:
         # Read from stdin
         data = json.load(sys.stdin)
@@ -153,3 +157,7 @@ if __name__ == '__main__':
 
     res = simulate_policy_forward(frame_metrics, command)
     print(json.dumps(res, indent=2))
+
+    # Exit non-zero when the policy violates SOA bounds so Serverless Job terminal
+    # state (COMPLETED vs FAILED) encodes the verification verdict.
+    sys.exit(0 if res['verified'] else 2)

@@ -78,14 +78,21 @@ export interface DiagnosisReport {
   diagnosisLatencyMs: number;
 }
 
+export type VerifierBackend =
+  | 'NEBIUS_SERVERLESS_JOB'
+  | 'LOCAL_CONTAINER'
+  | 'LOCAL_STATE_SPACE';
+
 export interface SimulationResult {
   verified: boolean;
   predictedTempC: number;
   predictedVibrationG: number;
   predictedCurrentMa: number;
   safetyMarginPercent: number;
-  verifierBackend: 'NEBIUS_SERVERLESS_JOB' | 'LOCAL_STATE_SPACE_CONTAINER';
+  verifierBackend: VerifierBackend;
   executionTimeMs: number;
+  jobId?: string;
+  jobState?: string;
 }
 
 export interface AgentTraceEvent {

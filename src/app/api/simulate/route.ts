@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPolicyInSandbox } from '@/lib/simulator';
+import { verifyPolicyWithDispatch } from '@/lib/verifier-job';
 import { telemetryStore } from '@/lib/store';
 import { ActuationCommand, AgentTraceEvent, TelemetryFrame } from '@/lib/types';
 
@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 4: Validate proposed control parameters in sandbox simulation
-    const simulation = await verifyPolicyInSandbox(frame, candidateCommand);
+    const { result: simulation, backend, jobId, jobState } = await verifyPolicyWithDispatch(
+      frame,
+      candidateCommand
+    );
 
     // Record simulation verification trace
     const simTrace: AgentTraceEvent = {
@@ -28,7 +31,7 @@ export async function POST(req: NextRequest) {
       latencyMs: simulation.executionTimeMs,
       description: `State-space verifier: ${
         simulation.verified ? 'PASS' : 'FAIL'
-      } (Pred Temp: ${simulation.predictedTempC}C, Vib: ${
+      } via ${backend} (Pred Temp: ${simulation.predictedTempC}C, Vib: ${
         simulation.predictedVibrationG
       }g, Current: ${simulation.predictedCurrentMa}mA, Margin: ${
         simulation.safetyMarginPercent
@@ -39,7 +42,9 @@ export async function POST(req: NextRequest) {
         predictedVibrationG: simulation.predictedVibrationG,
         predictedCurrentMa: simulation.predictedCurrentMa,
         safetyMarginPercent: simulation.safetyMarginPercent,
-        backend: simulation.verifierBackend,
+        backend,
+        jobId,
+        jobState,
       },
     };
     telemetryStore.addAgentTrace(simTrace);

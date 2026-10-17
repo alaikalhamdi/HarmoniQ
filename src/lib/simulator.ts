@@ -77,17 +77,13 @@ export async function verifyPolicyInSandbox(
 
   const executionTimeMs = Math.round(performance.now() - startTime);
 
-  const verifierBackend = process.env.NEBIUS_PROJECT_ID
-    ? 'NEBIUS_SERVERLESS_JOB'
-    : 'LOCAL_STATE_SPACE_CONTAINER';
-
   return {
     verified,
     predictedTempC: parseFloat(simTemp.toFixed(1)),
     predictedVibrationG: parseFloat(simVibration.toFixed(3)),
     predictedCurrentMa: parseFloat(simCurrent.toFixed(1)),
     safetyMarginPercent,
-    verifierBackend,
+    verifierBackend: 'LOCAL_STATE_SPACE',
     executionTimeMs,
   };
 }

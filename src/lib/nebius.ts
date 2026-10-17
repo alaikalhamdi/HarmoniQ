@@ -12,6 +12,55 @@ import {
 const DEFAULT_TIER1_MODEL = 'nvidia/Nemotron-3-Nano-30B';
 const DEFAULT_TIER2_MODEL = 'nvidia/Nemotron-3-Ultra-550b-a55b';
 
+// Allowed enum domains for validating untrusted model output before it reaches the rig.
+const TRIAGE_STATUSES = ['NOMINAL', 'WARNING', 'FAULT'] as const;
+const TARGET_COMPONENTS = [
+  'ESP32-S3',
+  'IRF540N',
+  'DRV8833',
+  'INA219',
+  'MPU6050',
+  'NONE',
+] as const;
+const ACTUATION_ACTIONS = [
+  'SET_PWM',
+  'RECALIBRATE_PID',
+  'ENGAGE_CURRENT_LIMIT',
+  'EMERGENCY_CUTOFF',
+] as const;
+const SEVERITIES = ['LOW', 'MEDIUM', 'CRITICAL'] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function asEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
+}
+
+function asString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function clampOptionalNumber(value: unknown, min: number, max: number): number | undefined {
+  const parsed = optionalNumber(value);
+  return parsed === undefined ? undefined : Math.min(max, Math.max(min, parsed));
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
 let cachedTier1Model: string | null = null;
 let cachedTier2Model: string | null = null;
 let modelsDiscovered = false;
@@ -137,12 +186,15 @@ Respond strictly with valid JSON conforming to:
       const latency = Math.round(performance.now() - startTime);
       const content = response.choices[0]?.message?.content;
       if (content) {
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as Record<string, unknown>;
         const assessment: TriageAssessment = {
-          status: parsed.status || 'NOMINAL',
-          faultSignature: parsed.faultSignature || 'Telemetry evaluation completed',
-          confidence: parsed.confidence || 0.95,
-          targetComponent: parsed.targetComponent || 'NONE',
+          status: asEnum(parsed.status, TRIAGE_STATUSES, 'NOMINAL'),
+          faultSignature: asString(
+            parsed.faultSignature,
+            'Telemetry evaluation completed'
+          ),
+          confidence: clampUnit(asNumber(parsed.confidence, 0.95)),
+          targetComponent: asEnum(parsed.targetComponent, TARGET_COMPONENTS, 'NONE'),
           triageLatencyMs: latency,
           modelUsed: tier1,
         };
@@ -151,8 +203,8 @@ Respond strictly with valid JSON conforming to:
           tier1Calls: telemetryStore.getFinOpsStats().tier1Calls + 1,
           activeTier1Model: tier1,
           inferenceSource: 'NEBIUS_LIVE',
-          averageTriageLatencyMs: latency,
         });
+        telemetryStore.recordTriageLatency(latency);
 
         return assessment;
       }
@@ -215,8 +267,8 @@ Respond strictly with valid JSON conforming to:
     tier1Calls: telemetryStore.getFinOpsStats().tier1Calls + 1,
     activeTier1Model: tier1,
     inferenceSource: 'FALLBACK_SIM',
-    averageTriageLatencyMs: latency,
   });
+  telemetryStore.recordTriageLatency(latency);
 
   return assessment;
 }
@@ -277,14 +329,23 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
       const latency = Math.round(performance.now() - startTime);
       const content = response.choices[0]?.message?.content;
       if (content) {
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        const recommended = isRecord(parsed.recommendedCommand)
+          ? parsed.recommendedCommand
+          : {};
+        const params = isRecord(recommended.parameters) ? recommended.parameters : {};
+
         const command: ActuationCommand = {
           commandId: `CMD-${Date.now()}`,
           targetDeviceId: frame.deviceId,
-          action: parsed.recommendedCommand.action || 'SET_PWM',
-          parameters: parsed.recommendedCommand.parameters || {
-            targetPwm: 100,
-            reason: 'Grounding-directed parameter derate',
+          action: asEnum(recommended.action, ACTUATION_ACTIONS, 'SET_PWM'),
+          parameters: {
+            targetPwm: clampOptionalNumber(params.targetPwm, 0, 255),
+            kp: optionalNumber(params.kp),
+            ki: optionalNumber(params.ki),
+            kd: optionalNumber(params.kd),
+            currentLimitMa: clampOptionalNumber(params.currentLimitMa, 0, 100000),
+            reason: asString(params.reason, 'Grounding-directed parameter derate'),
           },
           verifiedBySimulation: false,
           modelChainUsed: [triage.modelUsed, tier2],
@@ -292,10 +353,16 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
         };
 
         const report: DiagnosisReport = {
-          rootCause: parsed.rootCause,
-          severity: parsed.severity || 'MEDIUM',
-          confidence: parsed.confidence || 0.95,
-          justification: parsed.justification,
+          rootCause: asString(
+            parsed.rootCause,
+            'Component operating parameters exceeded safe threshold'
+          ),
+          severity: asEnum(parsed.severity, SEVERITIES, 'MEDIUM'),
+          confidence: clampUnit(asNumber(parsed.confidence, 0.95)),
+          justification: asString(
+            parsed.justification,
+            'Datasheet-grounded mitigation synthesized to restore the safe operating area.'
+          ),
           modelUsed: tier2,
           citations,
           recommendedCommand: command,

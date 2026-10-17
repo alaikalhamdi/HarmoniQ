@@ -17,7 +17,9 @@
 2. Performs sub-150ms anomaly classification via **NVIDIA Nemotron Nano/Lightning** on **Nebius Token Factory**.
 3. Grounds diagnostics in real-world manufacturer component datasheets via **Tavily Search API** to extract safe operating area (SOA) curves, thermal derating factors, and undervoltage lockout limits.
 4. Synthesizes safe parameter adjustments using **NVIDIA Nemotron Ultra/Super** on Nebius Token Factory.
-5. Verifies stability in a **Nebius Serverless Job** state-space sandbox before dispatching corrective actuation commands (`SET_PWM`, `RECALIBRATE_PID`, `ENGAGE_CURRENT_LIMIT`, `EMERGENCY_CUTOFF`) back to stabilize the rig in real time.
+5. Verifies stability in a **containerized state-space verifier** — dispatched as a **Nebius Serverless Job** when configured, otherwise the exact same container entrypoint runs locally — before dispatching corrective actuation commands (`SET_PWM`, `RECALIBRATE_PID`, `ENGAGE_CURRENT_LIMIT`, `EMERGENCY_CUTOFF`) back to stabilize the rig in real time.
+
+Every external integration has a deterministic local fallback, so the full closed loop runs zero-config with no API keys or hardware attached.
 
 ---
 
@@ -25,10 +27,10 @@
 
 | Hackathon Requirement | Implementation in This Repository | Source Files |
 |---|---|---|
-| **Nebius Infrastructure** (`api.tokenfactory.nebius.com/v1` & Serverless Jobs) | OpenAI-compatible client pointed at `https://api.tokenfactory.nebius.com/v1` with dynamic `/v1/models` resolution, plus containerized Python verifier for **Nebius Serverless Jobs**. | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`jobs/policy-verifier/Dockerfile`](jobs/policy-verifier/Dockerfile) |
-| **NVIDIA Open-Source Models** (`Nemotron` family) | Multi-tier routing between **NVIDIA Nemotron Nano / Lightning** (Tier-1 `<150ms` triage) and **NVIDIA Nemotron Ultra / Super** (Tier-2 root-cause policy synthesis). | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`src/app/api/telemetry/route.ts`](src/app/api/telemetry/route.ts), [`src/app/api/diagnose/route.ts`](src/app/api/diagnose/route.ts) |
+| **Nebius Infrastructure** (`api.tokenfactory.nebius.com/v1` & Serverless Jobs) | OpenAI-compatible client pointed at `https://api.tokenfactory.nebius.com/v1` with dynamic `/v1/models` resolution, plus a backend dispatcher that runs the containerized Python verifier as a real **Nebius Serverless Job** (`/ai/v1/jobs`) when configured. | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`src/lib/verifier-job.ts`](src/lib/verifier-job.ts), [`jobs/policy-verifier/Dockerfile`](jobs/policy-verifier/Dockerfile) |
+| **NVIDIA Open-Source Models** (`Nemotron` family) | Multi-tier routing between **NVIDIA Nemotron Nano / Lightning** (Tier-1 `<150ms` triage) and **NVIDIA Nemotron Ultra / Super** (Tier-2 root-cause policy synthesis), with validated structured JSON output. | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`src/app/api/telemetry/route.ts`](src/app/api/telemetry/route.ts), [`src/app/api/diagnose/route.ts`](src/app/api/diagnose/route.ts) |
 | **Tavily Search Integration** | Runtime `POST https://api.tavily.com/search` call inside `/api/diagnose` retrieving manufacturer datasheet SOA limits and thermal derating curves for `IRF540N`, `DRV8833`, `MPU6050`, and `INA219`. | [`src/lib/tavily.ts`](src/lib/tavily.ts), [`src/components/AgentTracePanel.tsx`](src/components/AgentTracePanel.tsx) |
-| **Physical AI Track & 1-Minute Video Rule** | Includes both `ESP32-S3` C++ firmware + Serial bridge (`HARDWARE_LIVE`) and a 30Hz closed-loop physics Digital Twin (`SYNTHETIC_TWIN`) so judges can test fault injection and autonomous stabilization live in the browser. | [`hardware/firmware/esp32_telemetry_rig.ino`](hardware/firmware/esp32_telemetry_rig.ino), [`hardware/edge-bridge/bridge.ts`](hardware/edge-bridge/bridge.ts), [`src/lib/digital-twin.ts`](src/lib/digital-twin.ts) |
+| **Physical AI Track & 1-Minute Video Rule** | Includes both `ESP32-S3` C++ firmware + Serial bridge (`HARDWARE_LIVE`) and a 30Hz closed-loop physics Digital Twin (`SYNTHETIC_TWIN`) so judges can test fault injection and autonomous stabilization live in the browser. The bridge can inject faults on a schedule via CLI flags. | [`hardware/firmware/esp32_telemetry_rig.ino`](hardware/firmware/esp32_telemetry_rig.ino), [`hardware/edge-bridge/bridge.ts`](hardware/edge-bridge/bridge.ts), [`src/lib/digital-twin.ts`](src/lib/digital-twin.ts) |
 | **Open-Source License Rule** | Explicit **MIT License** at repository root (`LICENSE`) and in `package.json` (`"license": "MIT"`). Ensure the MIT license is also visible in the top-level GitHub repository **About** section. | [`LICENSE`](LICENSE), [`package.json`](package.json) |
 
 ---
@@ -46,7 +48,7 @@ flowchart TD
     Triage["Fast Triage Layer (<150ms)\nNebius: nvidia/Nemotron-3-Nano"]
     Tavily["Datasheet Grounding\nTavily Search API (SOA Specs)"]
     Ultra["Deep Policy Synthesis\nNebius: nvidia/Nemotron-3-Ultra"]
-    Sandbox["Sandbox Policy Verifier\nNebius Serverless Jobs / Container"]
+    Sandbox["Containerized Policy Verifier\n(Nebius Serverless Job / Local Container)"]
   end
 
   MCU -->|"TelemetryFrame (V, I, T, 16-Bin FFT)"| Triage
@@ -72,8 +74,16 @@ Generic LLMs frequently hallucinate safe operating limits. Our agent queries **T
 * **DRV8833 Dual H-Bridge:** Identifies 8.5V Undervoltage Lockout (UVLO) trip points and commands current limiting during inductive brownout transients.
 * **MPU-6050 Accelerometer:** Pinpoints bearing outer-raceway defect harmonics (`385Hz`) and computes PID damping parameters.
 
-### C. Containerized Policy Verification via Nebius Serverless Jobs
-Autonomous actuation commands are dangerous without validation. Before any command touches physical actuators, `/api/simulate` runs a forward discrete-time state-space simulation packaged as a **Nebius Serverless Job** (`jobs/policy-verifier/Dockerfile`). Commands that fail thermal or vibration boundaries are blocked.
+### C. Containerized Policy Verification with Graceful Backends
+Autonomous actuation commands are dangerous without validation. Before any command touches physical actuators, `/api/simulate` runs a forward discrete-time state-space simulation (50 steps, 2.5s horizon) that blocks any policy violating the thermal, current, or vibration boundaries.
+
+`verifyPolicyWithDispatch()` ([`src/lib/verifier-job.ts`](src/lib/verifier-job.ts)) picks the strongest available backend and reports which one actually ran in `SimulationResult.verifierBackend`:
+
+1. **`NEBIUS_SERVERLESS_JOB`** — opt-in. With `NEBIUS_VERIFIER_REMOTE=true` and the job config below set, it submits `jobs/policy-verifier` to `https://api.nebius.cloud/ai/v1/jobs`, injects the frame/command as a file, and polls the job's terminal state. The container exits non-zero on unsafe policies, so job `COMPLETED` vs `FAILED` is the authoritative pass/fail gate.
+2. **`LOCAL_CONTAINER`** — the default when Python is on `PATH`. Runs the exact same `verifier.py` entrypoint as a subprocess, so the shipped container logic is exercised rather than reimplemented.
+3. **`LOCAL_STATE_SPACE`** — the in-process TypeScript engine ([`src/lib/simulator.ts`](src/lib/simulator.ts)), kept mathematically identical to the Python verifier. Used when Python is unavailable.
+
+The UI never labels a result with a backend that did not run.
 
 ---
 
@@ -113,7 +123,7 @@ The submission video requires at least a **1-minute continuous clip** showing th
    * **Stage 1 (Nano):** Flags the fault in `<150ms`.
    * **Stage 2 (Tavily):** Retrieves manufacturer datasheet derating limits with clickable citation URLs.
    * **Stage 3 (Ultra):** Formulates a recovery command (`SET_PWM`, `ENGAGE_CURRENT_LIMIT`, or `RECALIBRATE_PID`).
-   * **Stage 4 (Sandbox):** Nebius Serverless verifier tests the policy in the 50-step state-space sandbox.
+   * **Stage 4 (Sandbox):** the containerized verifier tests the policy in the 50-step state-space sandbox and reports which backend actually ran (`NEBIUS_SERVERLESS_JOB`, `LOCAL_CONTAINER`, or `LOCAL_STATE_SPACE`).
    * **Stage 5 (Actuation):** Dispatches the verified command to the rig.
 
 5. **Witness Autonomous Stabilization:**
@@ -125,7 +135,7 @@ The submission video requires at least a **1-minute continuous clip** showing th
 
 ### Prerequisites
 * Node.js 18+ (Node 20 recommended)
-* Python 3.10+ (for Serverless verification self-test)
+* Python 3.10+ (optional: runs the local container verifier and `npm run verify:job`; without it the app falls back to the in-process TypeScript engine)
 
 ### Installation
 ```bash
@@ -138,23 +148,46 @@ cp .env.example .env.local
 
 ### Configure Keys (`.env.local`)
 ```env
+# Nebius Token Factory (OpenAI-compatible inference)
 NEBIUS_API_KEY="your_nebius_token_factory_key"
 NEBIUS_BASE_URL="https://api.tokenfactory.nebius.com/v1"
+
+# Tavily (datasheet grounding)
 TAVILY_API_KEY="tvly-your_tavily_api_key"
 ```
-*(Note: If keys are omitted, the application runs zero-config using deterministic local physics and curated manufacturer specifications.)*
+*(If keys are omitted, the app runs zero-config using deterministic local physics and curated manufacturer specifications.)*
+
+To dispatch the verifier as a real **Nebius Serverless Job** instead of running it locally, also set:
+```env
+NEBIUS_VERIFIER_REMOTE="true"
+NEBIUS_PROJECT_ID="your_nebius_project_id"
+NEBIUS_IAM_TOKEN="<access token from: nebius iam get-access-token>"
+NEBIUS_JOB_IMAGE="<registry/path:tag of the pushed jobs/policy-verifier image>"
+NEBIUS_JOB_PLATFORM="<serverless platform ID>"
+NEBIUS_JOB_PRESET="<preset matching the platform>"
+# NEBIUS_JOB_SUBNET_ID=""
+# NEBIUS_JOB_POLL_BUDGET_MS="8000"
+```
 
 ### Run Verification & Start Server
 ```bash
-# Test serverless verification container
+# Self-test the policy verifier container
 npm run verify:job
 
-# Run end-to-end pipeline smoke test
+# Run the end-to-end closed-loop pipeline smoke test
 npm run smoke-test
 
 # Start the Command Center
 npm run dev
 ```
+
+### Stream synthetic edge telemetry (optional)
+Drive the API from a separate process instead of the browser loop. The bridge can also inject faults on a schedule so the `HARDWARE_LIVE` path exercises recovery without a physical rig:
+```bash
+npm run bridge:synthetic
+npm run bridge:synthetic -- --fault THERMAL_RUNAWAY --fault-after 5 --hold 15 --cycle
+```
+Supported faults: `BEARING_WEAR`, `VOLTAGE_BROWNOUT`, `THERMAL_RUNAWAY` (see `hardware/edge-bridge/bridge.ts`).
 
 ---
 

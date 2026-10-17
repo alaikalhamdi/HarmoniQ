@@ -58,7 +58,7 @@ export const FinOpsMetricsBar: React.FC<FinOpsMetricsBarProps> = ({
           <div className="flex items-center gap-2 bg-[#0B0F17] px-2.5 py-1.5 rounded border border-[#1F2937]">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
             <div className="flex flex-col">
-              <span className="text-[10px] text-gray-500 uppercase">Triage P95</span>
+              <span className="text-[10px] text-gray-500 uppercase">Avg Triage</span>
               <span className="text-gray-200">{finops.averageTriageLatencyMs} ms</span>
             </div>
           </div>

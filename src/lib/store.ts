@@ -17,6 +17,9 @@ class TelemetryStore {
   private lastExecutedCommand: ActuationCommand | null = null;
   private supabase: SupabaseClient | null = null;
 
+  private triageLatencyTotalMs = 0;
+  private triageLatencySamples = 0;
+
   private finops: FinOpsStats = {
     tier1Calls: 0,
     tier2Calls: 0,
@@ -138,11 +141,23 @@ class TelemetryStore {
     return { ...this.finops };
   }
 
+  // Maintains a true running mean of Tier-1 triage latency rather than echoing the
+  // most recent sample.
+  public recordTriageLatency(latencyMs: number) {
+    this.triageLatencyTotalMs += latencyMs;
+    this.triageLatencySamples += 1;
+    this.finops.averageTriageLatencyMs = Math.round(
+      this.triageLatencyTotalMs / this.triageLatencySamples
+    );
+  }
+
   public reset() {
     this.frames = [];
     this.traces = [];
     this.pendingCommand = null;
     this.lastExecutedCommand = null;
+    this.triageLatencyTotalMs = 0;
+    this.triageLatencySamples = 0;
   }
 }
 
