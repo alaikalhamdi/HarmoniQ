@@ -1,12 +1,17 @@
 {
-  "name": "kind-shannon",
-  "version": "0.1.0",
-  "private": true,
+  "name": "edge-to-cloud-predictive-maintenance-agent",
+  "version": "1.0.0",
+  "description": "Embodied Edge-to-Cloud Predictive Maintenance & Fault Recovery Agent built with NVIDIA Nemotron on Nebius Token Factory, Tavily Search API, and Nebius Serverless Jobs.",
+  "license": "MIT",
+  "private": false,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "smoke-test": "tsx scripts/smoke_test.ts",
+    "bridge:synthetic": "tsx hardware/edge-bridge/bridge.ts --synthetic",
+    "verify:job": "python jobs/policy-verifier/verifier.py --self-test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

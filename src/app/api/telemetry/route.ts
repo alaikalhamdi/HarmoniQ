@@ -14,20 +14,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Record incoming telemetry frame into in-memory ring buffer
     telemetryStore.addTelemetryFrame(frame);
 
     // Execute Tier-1 Nano triage evaluation (<150ms)
     const triage = await runTier1Triage(frame);
 
-    // Record triage reasoning trace
     const trace: AgentTraceEvent = {
       id: `TRC-T1-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       timestamp: Date.now(),
       stage: 'TRIAGE_NANO',
-      status: triage.status === 'FAULT' ? 'WARNING' : 'SUCCESS',
+      status: triage.status === 'NOMINAL' ? 'SUCCESS' : 'WARNING',
       latencyMs: triage.triageLatencyMs,
-      description: `Tier-1 Nano classified frame as ${triage.status} (${triage.faultSignature.slice(0, 80)})`,
+      description: `Tier-1 Nano classified frame as ${triage.status} (${triage.faultSignature.slice(0, 95)})`,
       details: {
         status: triage.status,
         confidence: triage.confidence,
@@ -40,6 +38,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       triage,
       finops: telemetryStore.getFinOpsStats(),
+      traces: telemetryStore.getRecentTraces(20).reverse(),
+      lastExecutedCommand: telemetryStore.getLastExecutedCommand(),
       timestamp: Date.now(),
     });
   } catch (error) {
@@ -52,7 +52,7 @@ export async function GET() {
   try {
     return NextResponse.json({
       frames: telemetryStore.getRecentTelemetry(60),
-      traces: telemetryStore.getRecentTraces(20),
+      traces: telemetryStore.getRecentTraces(20).reverse(),
       finops: telemetryStore.getFinOpsStats(),
       pendingCommand: telemetryStore.popPendingCommand(),
       lastExecutedCommand: telemetryStore.getLastExecutedCommand(),

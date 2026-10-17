@@ -38,10 +38,11 @@ export async function verifyPolicyInSandbox(
     // PWM actuator tracking
     simPwm += (targetPwm - simPwm) * 0.15;
 
-    // Steady state target estimates under new control parameters
+    // Steady state target estimates under new control parameters with Joule heating
     const ambientTemp = 30.0;
-    const targetTempSteady = ambientTemp + Math.pow(simPwm / 255, 1.8) * 45.0;
-    const targetCurrentSteady = 75.0 + (simPwm / 255) * 450.0;
+    const jouleHeat = Math.pow(simPwm / 255, 1.8) * 65.0 + (simCurrent / 1000.0) * 15.0;
+    const targetTempSteady = ambientTemp + jouleHeat;
+    const targetCurrentSteady = 75.0 + (simPwm / 255) * 650.0;
     const targetVibrationSteady = (0.05 + (simPwm / 255) * 0.22) / dampingFactor;
 
     // First order discrete transitions
