@@ -77,7 +77,7 @@ export const HardwareControlRig: React.FC<HardwareControlRigProps> = ({
           <div className="flex items-center justify-between text-[11px] font-mono text-gray-300">
             <span className="flex items-center gap-1.5">
               <Wrench className="w-3.5 h-3.5 text-amber-400" />
-              <span>SYNTHETIC FAULT INJECTOR (DEVPOST DEMO)</span>
+              <span>SYNTHETIC FAULT INJECTOR</span>
             </span>
             <span
               className={`text-[10px] font-bold px-1.5 py-0.5 rounded tabular-nums ${

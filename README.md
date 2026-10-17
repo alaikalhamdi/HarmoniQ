@@ -1,6 +1,5 @@
 # Edge-to-Cloud Predictive Maintenance & Fault Recovery Agent
-**Physical AI Track** | **Nebius x NVIDIA Global AI Hackathon**  
-*Competing for the $3,000 Best Use of Tavily Sponsor Prize*
+**Physical AI Track** | **Nebius x NVIDIA Global AI Hackathon**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16_App_Router-black.svg)](https://nextjs.org/)
@@ -20,13 +19,13 @@ This project delivers an embodied, closed-loop **Physical AI** predictive mainte
 
 ---
 
-## 2. Devpost Rules & Sponsor Prize Compliance Matrix
+## 2. Hackathon Rules & Technical Compliance Matrix
 
 | Hackathon Requirement | Implementation in This Repository | Source Files |
 |---|---|---|
 | **Nebius Infrastructure** (`api.tokenfactory.nebius.com/v1` & Serverless Jobs) | OpenAI-compatible client pointed at `https://api.tokenfactory.nebius.com/v1` with dynamic `/v1/models` resolution, plus containerized Python verifier for **Nebius Serverless Jobs**. | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`jobs/policy-verifier/Dockerfile`](jobs/policy-verifier/Dockerfile) |
 | **NVIDIA Open-Source Models** (`Nemotron` family) | Multi-tier routing between **NVIDIA Nemotron Nano / Lightning** (Tier-1 `<150ms` triage) and **NVIDIA Nemotron Ultra / Super** (Tier-2 root-cause policy synthesis). | [`src/lib/nebius.ts`](src/lib/nebius.ts), [`src/app/api/telemetry/route.ts`](src/app/api/telemetry/route.ts), [`src/app/api/diagnose/route.ts`](src/app/api/diagnose/route.ts) |
-| **Best Use of Tavily ($3,000 Prize)** | Runtime `POST https://api.tavily.com/search` call inside `/api/diagnose` retrieving manufacturer datasheet SOA limits and thermal derating curves for `IRF540N`, `DRV8833`, `MPU6050`, and `INA219`. | [`src/lib/tavily.ts`](src/lib/tavily.ts), [`src/components/AgentTracePanel.tsx`](src/components/AgentTracePanel.tsx) |
+| **Tavily Search Integration** | Runtime `POST https://api.tavily.com/search` call inside `/api/diagnose` retrieving manufacturer datasheet SOA limits and thermal derating curves for `IRF540N`, `DRV8833`, `MPU6050`, and `INA219`. | [`src/lib/tavily.ts`](src/lib/tavily.ts), [`src/components/AgentTracePanel.tsx`](src/components/AgentTracePanel.tsx) |
 | **Physical AI Track & 1-Minute Video Rule** | Includes both `ESP32-S3` C++ firmware + Serial bridge (`HARDWARE_LIVE`) and a 30Hz closed-loop physics Digital Twin (`SYNTHETIC_TWIN`) so judges can test fault injection and autonomous stabilization live in the browser. | [`hardware/firmware/esp32_telemetry_rig.ino`](hardware/firmware/esp32_telemetry_rig.ino), [`hardware/edge-bridge/bridge.ts`](hardware/edge-bridge/bridge.ts), [`src/lib/digital-twin.ts`](src/lib/digital-twin.ts) |
 | **Open-Source License Rule** | Explicit **MIT License** at repository root (`LICENSE`) and in `package.json` (`"license": "MIT"`). Ensure the MIT license is also visible in the top-level GitHub repository **About** section. | [`LICENSE`](LICENSE), [`package.json`](package.json) |
 
@@ -65,7 +64,7 @@ High-frequency physical telemetry generates tens of thousands of frames per hour
 * **Tier 2 (Deep Reasoning):** When an anomaly occurs, `nvidia/Nemotron-3-Ultra-550b-a55b` (or `nvidia/Llama-3_1-Nemotron-Ultra-253B-v1`) is invoked, cross-referencing live manufacturer datasheet constraints to generate a mathematically sound recovery policy.
 * **Result:** **95%+ cost reduction** with sub-second response times during critical physical faults.
 
-### B. Live Hardware Datasheet Grounding via Tavily ($3,000 Prize)
+### B. Live Hardware Datasheet Grounding via Tavily
 Generic LLMs frequently hallucinate safe operating limits. Our agent queries **Tavily Search API** in real time for the exact hardware Bill of Materials (BOM):
 * **IRF540N N-MOSFET:** Retrieves linear thermal derating curves (`0.73 W/°C above 25°C`) and triggers automatic PWM derating when junction temperature exceeds the 85°C continuous SOA limit.
 * **DRV8833 Dual H-Bridge:** Identifies 8.5V Undervoltage Lockout (UVLO) trip points and commands current limiting during inductive brownout transients.

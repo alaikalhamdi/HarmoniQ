@@ -101,7 +101,7 @@ export const AgentTracePanel: React.FC<AgentTracePanelProps> = ({
         <div className="lg:col-span-4 flex flex-col gap-2">
           <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 px-1">
             <span className="text-amber-400 font-bold">
-              TAVILY DATASHEET GROUNDING ($3,000 PRIZE)
+              TAVILY DATASHEET GROUNDING
             </span>
           </div>
 
