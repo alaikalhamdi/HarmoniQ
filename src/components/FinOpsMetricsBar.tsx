@@ -27,15 +27,15 @@ export const FinOpsMetricsBar: React.FC<FinOpsMetricsBarProps> = ({
           <div className="w-2.5 h-8 bg-emerald-500 rounded-sm" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold tracking-wider text-[#F9FAFB] uppercase">
-                Physical AI Command Center
+              <h1 className="text-sm font-semibold tracking-wider text-[#F9FAFB]">
+                HarmoniQ: Edge-to-Cloud Physical AI Fault Recovery
               </h1>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-[#1F2937] text-gray-400 bg-[#0B0F17]">
                 v1.0-RC
               </span>
             </div>
             <p className="text-xs text-gray-400 font-mono">
-              Edge-to-Cloud Predictive Maintenance and Closed-Loop Recovery
+              Closed-loop Physical AI agent that triages real-time MCU FFT &amp; voltage telemetry with Nemotron Nano, diagnoses faults via Tavily &amp; Nemotron Ultra on Nebius, and autonomously stabilizes hardware.
             </p>
           </div>
         </div>

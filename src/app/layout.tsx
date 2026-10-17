@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Edge-to-Cloud Physical AI Telemetry & Recovery Command Center',
+  title: 'HarmoniQ: Edge-to-Cloud Physical AI Fault Recovery',
   description:
-    'Real-time edge hardware telemetry, sub-second Nemotron Nano triage, Tavily datasheet grounding, and closed-loop actuation recovery.',
+    'Closed-loop Physical AI agent that triages real-time MCU FFT & voltage telemetry with Nemotron Nano, diagnoses faults via Tavily & Nemotron Ultra on Nebius, and autonomously stabilizes hardware.',
 };
 
 export default function RootLayout({

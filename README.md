@@ -1,5 +1,7 @@
-# Edge-to-Cloud Predictive Maintenance & Fault Recovery Agent
+# HarmoniQ: Edge-to-Cloud Physical AI Fault Recovery
 **Physical AI Track** | **Nebius x NVIDIA Global AI Hackathon**
+
+> **Elevator Pitch:** Closed-loop Physical AI agent that triages real-time MCU FFT & voltage telemetry with Nemotron Nano, diagnoses faults via Tavily & Nemotron Ultra on Nebius, and autonomously stabilizes hardware.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16_App_Router-black.svg)](https://nextjs.org/)
@@ -10,7 +12,7 @@
 
 ## 1. Executive Summary
 
-This project delivers an embodied, closed-loop **Physical AI** predictive maintenance and fault recovery agent. Operating across the edge-to-cloud spectrum, the system:
+**HarmoniQ** delivers an embodied, closed-loop **Physical AI** predictive maintenance and fault recovery agent. Operating across the edge-to-cloud spectrum, the system:
 1. Ingests high-frequency (30Hz) microcontroller telemetry (16-bin FFT vibration harmonics, supply voltage, current draw, and power stage temperature).
 2. Performs sub-150ms anomaly classification via **NVIDIA Nemotron Nano/Lightning** on **Nebius Token Factory**.
 3. Grounds diagnostics in real-world manufacturer component datasheets via **Tavily Search API** to extract safe operating area (SOA) curves, thermal derating factors, and undervoltage lockout limits.
