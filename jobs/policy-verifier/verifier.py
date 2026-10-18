@@ -10,7 +10,7 @@ import json
 import argparse
 import math
 
-def simulate_policy_forward(frame_metrics, command):
+def simulate_policy_forward(frame_metrics, command, overrides=None):
     """
     Executes a 50-step forward discrete-time state-space simulation (2.5s horizon)
     to predict thermal, electrical, and vibration stability.
@@ -37,8 +37,11 @@ def simulate_policy_forward(frame_metrics, command):
     else:
         current_limit = 2000.0
 
-    kd = float(params.get('kd', 0.15)) if action == 'RECALIBRATE_PID' else 0.15
-    damping_factor = min(2.0, max(0.5, kd * 6.0))
+    if action == 'RECALIBRATE_PID':
+        kd = float(params.get('kd', 0.15))
+        damping_factor = min(2.0, max(0.5, kd * 6.0))
+    else:
+        damping_factor = 1.0
 
     steps = 50
     ambient_temp = 30.0
@@ -62,10 +65,17 @@ def simulate_policy_forward(frame_metrics, command):
         if sim_current > current_limit:
             sim_current = current_limit
 
-    # Hard boundary checks per Vishay IRF540N & TI DRV8833 datasheets
-    max_safe_temp = 85.0
-    max_safe_current = 1200.0
-    max_safe_vibration = 0.40
+    # Hard boundary checks. Extracted limits are untrusted: they may only tighten the
+    # built-in bounds, never loosen them (mirrors src/lib/simulator.ts).
+    limits = overrides or command.get('extractedLimits') or {}
+
+    def _tighten(key, default):
+        value = limits.get(key)
+        return min(default, float(value)) if value is not None else default
+
+    max_safe_temp = _tighten('maxSafeTempC', 85.0)
+    max_safe_current = _tighten('maxSafeCurrentMa', 1200.0)
+    max_safe_vibration = _tighten('maxSafeVibrationG', 0.40)
 
     is_temp_safe = sim_temp <= max_safe_temp
     is_current_safe = sim_current <= max_safe_current
@@ -154,8 +164,9 @@ if __name__ == '__main__':
 
     frame_metrics = data.get('metrics', {})
     command = data.get('command', {})
+    overrides = data.get('overrides') or command.get('extractedLimits')
 
-    res = simulate_policy_forward(frame_metrics, command)
+    res = simulate_policy_forward(frame_metrics, command, overrides)
     print(json.dumps(res, indent=2))
 
     # Exit non-zero when the policy violates SOA bounds so Serverless Job terminal

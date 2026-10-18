@@ -76,7 +76,7 @@ async function sendFrameToServer(frame: TelemetryFrame) {
 
 async function pollPendingCommands() {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/telemetry`);
+    const res = await fetch(`${API_BASE_URL}/api/telemetry?pop=true`);
     if (res.ok) {
       const data = await res.json();
       if (data.pendingCommand) {

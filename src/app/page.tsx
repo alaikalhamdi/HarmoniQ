@@ -43,20 +43,27 @@ export default function CommandCenterPage() {
     totalFramesProcessed: 0,
     filteredNominalPercent: 100,
     estimatedCostSavingsUsd: 0,
-    averageTriageLatencyMs: 42,
-    activeTier1Model: 'nvidia/Nemotron-3-Nano-30B',
-    activeTier2Model: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+    averageTriageLatencyMs: 0,
+    activeTier1Model: 'rule-based-fallback',
+    activeTier2Model: 'rule-based-fallback',
     inferenceSource: 'FALLBACK_SIM',
   });
 
   const twinRef = useRef<DigitalTwinInternalState>(twinState);
-  twinRef.current = twinState;
-
   const currentFrameRef = useRef<TelemetryFrame | null>(currentFrame);
-  currentFrameRef.current = currentFrame;
-
   const isRecoveringRef = useRef(isRecovering);
-  isRecoveringRef.current = isRecovering;
+
+  useEffect(() => {
+    twinRef.current = twinState;
+  }, [twinState]);
+
+  useEffect(() => {
+    currentFrameRef.current = currentFrame;
+  }, [currentFrame]);
+
+  useEffect(() => {
+    isRecoveringRef.current = isRecovering;
+  }, [isRecovering]);
 
   // Automated closed-loop anomaly recovery pipeline (Steps 2, 3, and 4)
   const triggerClosedLoopRecovery = useCallback(
@@ -281,7 +288,6 @@ export default function CommandCenterPage() {
       {/* Top FinOps Metrics & Navigation Bar */}
       <FinOpsMetricsBar
         finops={finops}
-        activeFault={twinState.activeFault}
         isStreaming={isStreaming}
         onToggleStream={() => setIsStreaming((prev) => !prev)}
       />

@@ -1,8 +1,9 @@
-import { ActuationCommand, SimulationResult, TelemetryFrame } from './types';
+import { ActuationCommand, SafetyLimitOverrides, SimulationResult, TelemetryFrame } from './types';
 
 export async function verifyPolicyInSandbox(
   frame: TelemetryFrame,
-  command: ActuationCommand
+  command: ActuationCommand,
+  overrides?: SafetyLimitOverrides
 ): Promise<SimulationResult> {
   const startTime = performance.now();
 
@@ -56,10 +57,12 @@ export async function verifyPolicyInSandbox(
     }
   }
 
-  // Safety boundary constraints (MOSFET Tj < 85C, Current < 1200mA, Vibration < 0.40g)
-  const maxSafeTemp = 85.0;
-  const maxSafeCurrent = 1200.0;
-  const maxSafeVibration = 0.40;
+  // Safety boundary constraints (grounded in datasheet limits or defaults)
+  const limits = overrides || command.extractedLimits;
+  // Extracted limits are untrusted: they may only tighten the built-in bounds, never loosen them.
+  const maxSafeTemp = Math.min(85.0, limits?.maxSafeTempC ?? 85.0);
+  const maxSafeCurrent = Math.min(1200.0, limits?.maxSafeCurrentMa ?? 1200.0);
+  const maxSafeVibration = Math.min(0.40, limits?.maxSafeVibrationG ?? 0.40);
 
   const isTempSafe = simTemp <= maxSafeTemp;
   const isCurrentSafe = simCurrent <= maxSafeCurrent;

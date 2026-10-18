@@ -70,8 +70,8 @@ function readNebiusJobConfig(): NebiusJobConfig | null {
     preset,
     subnetId: process.env.NEBIUS_JOB_SUBNET_ID || undefined,
     diskBytes: Number(process.env.NEBIUS_JOB_DISK_BYTES) || 21474836480,
-    pollBudgetMs: Number(process.env.NEBIUS_JOB_POLL_BUDGET_MS) || 8000,
-    pollIntervalMs: Number(process.env.NEBIUS_JOB_POLL_INTERVAL_MS) || 1500,
+    pollBudgetMs: Number(process.env.NEBIUS_JOB_POLL_BUDGET_MS) || 45000,
+    pollIntervalMs: Number(process.env.NEBIUS_JOB_POLL_INTERVAL_MS) || 2000,
   };
 }
 

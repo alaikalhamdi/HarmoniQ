@@ -3,6 +3,7 @@ import { telemetryStore } from './store';
 import {
   ActuationCommand,
   DiagnosisReport,
+  SafetyLimitOverrides,
   TavilyDatasheetCitation,
   TelemetryFrame,
   TriageAssessment,
@@ -112,8 +113,14 @@ export async function resolveNemotronModels(): Promise<{
       const list = await client.models.list();
       const modelIds = list.data.map((m) => m.id);
 
+      // Restrict candidate models strictly to NVIDIA Nemotron models to satisfy hackathon rules
+      const nemotronModels = modelIds.filter((id) => {
+        const lower = id.toLowerCase();
+        return lower.includes('nemotron') || lower.startsWith('nvidia/');
+      });
+
       // Resolve fastest Tier-1 Nano / Lightning model
-      const nanoMatch = modelIds.find(
+      const nanoMatch = nemotronModels.find(
         (id) =>
           id.toLowerCase().includes('nano') ||
           id.toLowerCase().includes('lightning') ||
@@ -122,7 +129,7 @@ export async function resolveNemotronModels(): Promise<{
       cachedTier1Model = nanoMatch || DEFAULT_TIER1_MODEL;
 
       // Resolve deepest Tier-2 Ultra / Super model
-      const ultraMatch = modelIds.find(
+      const ultraMatch = nemotronModels.find(
         (id) =>
           id.toLowerCase().includes('ultra') ||
           id.toLowerCase().includes('super') ||
@@ -156,9 +163,9 @@ export async function runTier1Triage(frame: TelemetryFrame): Promise<TriageAsses
       const systemPrompt = `You are an ultra-fast hardware telemetry triage system for an edge microcontroller rig.
 Evaluate the incoming telemetry frame in <150ms.
 Component Safe Operating Limits:
-- Supply Voltage: nominal 12.0V, minimum 10.0V (DRV8833 UVLO trigger is <9.0V).
+- Supply Voltage: nominal 12.0V, minimum 10.0V (system brownout threshold is <9.0V, DRV8833 VM UVLO 2.6V falling).
 - Current Draw: nominal <500mA, maximum 1200mA.
-- Temperature: nominal <50C, maximum 85C (IRF540N MOSFET thermal runaway >105C).
+- Temperature: nominal <50C, design derating margin 85C (IRF540N Tj max is 175C, thermal runaway risk >105C case).
 - Vibration FFT: nominal peak harmonic <0.35g, nominal fundamental ~120Hz. Bearing wear defect frequencies occur at >300Hz (harmonic resonance ~385Hz).
 
 Respond strictly with valid JSON conforming to:
@@ -214,7 +221,7 @@ Respond strictly with valid JSON conforming to:
   }
 
   // Deterministic fast fallback analyzer
-  const latency = Math.max(12, Math.round(performance.now() - startTime));
+  const latency = Math.round(performance.now() - startTime);
   const m = frame.metrics;
 
   let status: 'NOMINAL' | 'WARNING' | 'FAULT' = 'NOMINAL';
@@ -224,7 +231,7 @@ Respond strictly with valid JSON conforming to:
 
   if (m.temperatureC >= 95.0) {
     status = 'FAULT';
-    faultSignature = `Power stage thermal runaway: MOSFET junction temperature ${m.temperatureC}C exceeds 85C SOA continuous threshold`;
+    faultSignature = `Power stage thermal runaway: MOSFET junction temperature ${m.temperatureC}C exceeds 85C design derating margin (Tj max 175C)`;
     targetComponent = 'IRF540N';
     confidence = 0.98;
   } else if (m.temperatureC >= 70.0) {
@@ -239,7 +246,7 @@ Respond strictly with valid JSON conforming to:
     confidence = 0.96;
   } else if (m.supplyVoltageV <= 10.5) {
     status = 'WARNING';
-    faultSignature = `Transient supply rail sag to ${m.supplyVoltageV}V approaching UVLO limit`;
+    faultSignature = `Transient supply rail sag to ${m.supplyVoltageV}V approaching system brownout threshold`;
     targetComponent = 'DRV8833';
     confidence = 0.91;
   } else if (m.fftDominantFreqHz >= 320 && m.fftPeakMagnitude >= 0.55) {
@@ -254,18 +261,19 @@ Respond strictly with valid JSON conforming to:
     confidence = 0.89;
   }
 
+  const fallbackModel = 'rule-based-fallback';
   const assessment: TriageAssessment = {
     status,
     faultSignature,
     confidence,
     targetComponent,
     triageLatencyMs: latency,
-    modelUsed: tier1,
+    modelUsed: fallbackModel,
   };
 
   telemetryStore.updateFinOps({
     tier1Calls: telemetryStore.getFinOpsStats().tier1Calls + 1,
-    activeTier1Model: tier1,
+    activeTier1Model: fallbackModel,
     inferenceSource: 'FALLBACK_SIM',
   });
   telemetryStore.recordTriageLatency(latency);
@@ -289,6 +297,11 @@ You are diagnosing an anomalous physical edge rig based on telemetry and manufac
 Your task:
 1. Identify the root cause by cross-referencing telemetry with datasheet safe operating area (SOA) curves.
 2. Synthesize a corrective ActuationCommand to stabilize the hardware.
+3. Extract critical safety operating limits from the datasheet citations (clamped to sane bounds):
+   - maxSafeTempC: number (maximum continuous safe operating temperature, e.g. 85.0)
+   - maxSafeCurrentMa: number (maximum continuous safe current, e.g. 1200.0)
+   - maxSafeVibrationG: number (maximum acceptable vibration magnitude, e.g. 0.40)
+   - limitSource: string (the datasheet title or source that defines this limit)
 Actions available: 'SET_PWM' (reduce duty cycle 0-255), 'RECALIBRATE_PID' (tune kp, ki, kd), 'ENGAGE_CURRENT_LIMIT' (limit in mA), 'EMERGENCY_CUTOFF'.
 
 Respond strictly with valid JSON in this schema:
@@ -297,6 +310,12 @@ Respond strictly with valid JSON in this schema:
   "severity": "LOW" | "MEDIUM" | "CRITICAL",
   "confidence": number,
   "justification": string,
+  "extractedLimits": {
+    "maxSafeTempC": number,
+    "maxSafeCurrentMa": number,
+    "maxSafeVibrationG": number,
+    "limitSource": string
+  },
   "recommendedCommand": {
     "action": "SET_PWM" | "RECALIBRATE_PID" | "ENGAGE_CURRENT_LIMIT" | "EMERGENCY_CUTOFF",
     "parameters": {
@@ -334,6 +353,13 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
           ? parsed.recommendedCommand
           : {};
         const params = isRecord(recommended.parameters) ? recommended.parameters : {};
+        const rawLimits = isRecord(parsed.extractedLimits) ? parsed.extractedLimits : {};
+        const extractedLimits: SafetyLimitOverrides = {
+          maxSafeTempC: clampOptionalNumber(rawLimits.maxSafeTempC, 60, 150) ?? 85.0,
+          maxSafeCurrentMa: clampOptionalNumber(rawLimits.maxSafeCurrentMa, 800, 3000) ?? 1200.0,
+          maxSafeVibrationG: clampOptionalNumber(rawLimits.maxSafeVibrationG, 0.15, 0.8) ?? 0.40,
+          limitSource: asString(rawLimits.limitSource, citations[0]?.title || 'Datasheet Base'),
+        };
 
         const command: ActuationCommand = {
           commandId: `CMD-${Date.now()}`,
@@ -347,6 +373,7 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
             currentLimitMa: clampOptionalNumber(params.currentLimitMa, 0, 100000),
             reason: asString(params.reason, 'Grounding-directed parameter derate'),
           },
+          extractedLimits,
           verifiedBySimulation: false,
           modelChainUsed: [triage.modelUsed, tier2],
           timestamp: Date.now(),
@@ -365,6 +392,7 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
           ),
           modelUsed: tier2,
           citations,
+          extractedLimits,
           recommendedCommand: command,
           diagnosisLatencyMs: latency,
         };
@@ -382,7 +410,7 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
   }
 
   // Deterministic grounded synthesis fallback
-  const latency = Math.max(45, Math.round(performance.now() - startTime));
+  const latency = Math.round(performance.now() - startTime);
   const m = frame.metrics;
   const citation = citations[0] || {
     title: 'Hardware Safe Operating Limits',
@@ -400,23 +428,23 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
 
   if (m.temperatureC >= 95.0) {
     severity = 'CRITICAL';
-    rootCause = `Thermal runaway on IRF540N MOSFET. Junction temperature of ${m.temperatureC}C exceeds the continuous 85C SOA limit, causing exponential Rds(on) resistance rise and current saturation.`;
+    rootCause = `Thermal runaway on IRF540N MOSFET. Junction temperature of ${m.temperatureC}C exceeds the continuous 85C design derating margin (datasheet Tj max 175C), causing exponential Rds(on) resistance rise and current saturation.`;
     action = 'SET_PWM';
     parameters = {
       targetPwm: 85,
       reason: 'Derate PWM from 200 to 85 (33% duty cycle) to allow junction heat dissipation',
     };
-    justification = `Per Vishay IRF540N datasheet, linear derating of 0.73 W/C above 25C mandates operating duty cycle reduction under elevated thermal load to avoid permanent gate puncture.`;
+    justification = `Per IRF540 MOSFET datasheet, linear derating of 1.0 W/C above 25C mandates operating duty cycle reduction under elevated thermal load to avoid permanent gate puncture.`;
   } else if (m.supplyVoltageV <= 9.2 || m.currentDrawMa >= 1200) {
     severity = 'CRITICAL';
-    rootCause = `Supply rail brownout sag (${m.supplyVoltageV}V) with inductive current draw (${m.currentDrawMa}mA) nearing DRV8833 UVLO trip point (8.5V).`;
+    rootCause = `Supply rail brownout sag (${m.supplyVoltageV}V) with inductive current draw (${m.currentDrawMa}mA) nearing system brownout threshold (8.5V).`;
     action = 'ENGAGE_CURRENT_LIMIT';
     parameters = {
       currentLimitMa: 650,
       targetPwm: 140,
-      reason: 'Enforce 650mA current clamp to stabilize supply voltage rail above UVLO lockout',
+      reason: 'Enforce 650mA current clamp to stabilize supply voltage rail above brownout threshold',
     };
-    justification = `Per TI DRV8833 datasheet, supply voltage drops below 9V during stall induce UVLO cycling and back-EMF spikes. Clamping current draw preserves logic rail stability.`;
+    justification = `Per system operating specs and DRV8833 datasheet, supply voltage drops below 9V during stall induce system brownout cycling and back-EMF spikes. Clamping current draw preserves logic rail stability.`;
   } else if (m.fftDominantFreqHz >= 320) {
     severity = 'MEDIUM';
     rootCause = `Mechanical bearing raceway wear generating secondary harmonic resonance at ${m.fftDominantFreqHz}Hz with ${m.fftPeakMagnitude}g peak acceleration.`;
@@ -431,13 +459,27 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
     justification = `Per MPU-6050 vibration analysis specs, secondary harmonics above 300Hz indicate bearing cage defect. Increasing loop damping suppresses resonant energy transfer.`;
   }
 
+  const primaryCitation = citations[0];
+  // The current bound is a rig-level limit. A cited part's own rating (e.g. MPU6050 at 5mA)
+  // describes that part's supply draw, not the motor path, so it must not set this bound.
+  const fallbackLimits: SafetyLimitOverrides = {
+    maxSafeTempC: primaryCitation?.limits?.maxTempC
+      ? clampOptionalNumber(primaryCitation.limits.maxTempC, 60, 150) ?? 85.0
+      : 85.0,
+    maxSafeCurrentMa: 1200.0,
+    maxSafeVibrationG: 0.40,
+    limitSource: primaryCitation?.title || 'Datasheet Safe Operating Area',
+  };
+
+  const fallbackModel = 'rule-based-fallback';
   const command: ActuationCommand = {
     commandId: `CMD-${Date.now()}`,
     targetDeviceId: frame.deviceId,
     action,
     parameters,
+    extractedLimits: fallbackLimits,
     verifiedBySimulation: false,
-    modelChainUsed: [triage.modelUsed, tier2],
+    modelChainUsed: [triage.modelUsed, fallbackModel],
     timestamp: Date.now(),
   };
 
@@ -446,15 +488,16 @@ Tavily Datasheet Grounding: ${JSON.stringify(citations)}`,
     severity,
     confidence: 0.96,
     justification,
-    modelUsed: tier2,
+    modelUsed: fallbackModel,
     citations,
+    extractedLimits: fallbackLimits,
     recommendedCommand: command,
     diagnosisLatencyMs: latency,
   };
 
   telemetryStore.updateFinOps({
     tier2Calls: telemetryStore.getFinOpsStats().tier2Calls + 1,
-    activeTier2Model: tier2,
+    activeTier2Model: fallbackModel,
   });
 
   return report;

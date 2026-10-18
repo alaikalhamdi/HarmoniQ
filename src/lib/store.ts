@@ -26,9 +26,9 @@ class TelemetryStore {
     totalFramesProcessed: 0,
     filteredNominalPercent: 100,
     estimatedCostSavingsUsd: 0,
-    averageTriageLatencyMs: 42,
-    activeTier1Model: 'nvidia/Nemotron-3-Nano-30B',
-    activeTier2Model: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+    averageTriageLatencyMs: 0,
+    activeTier1Model: 'rule-based-fallback',
+    activeTier2Model: 'rule-based-fallback',
     inferenceSource: 'FALLBACK_SIM',
   };
 
@@ -110,6 +110,10 @@ class TelemetryStore {
     }
   }
 
+  public peekPendingCommand(): ActuationCommand | null {
+    return this.pendingCommand;
+  }
+
   public popPendingCommand(): ActuationCommand | null {
     const cmd = this.pendingCommand;
     this.pendingCommand = null;
@@ -163,7 +167,6 @@ class TelemetryStore {
 
 // Global singleton instance for server runtime
 declare global {
-  // eslint-disable-next-line no-var
   var __telemetryStore: TelemetryStore | undefined;
 }
 

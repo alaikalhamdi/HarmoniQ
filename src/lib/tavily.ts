@@ -5,28 +5,16 @@ const CURATED_DATASHEET_SPECS: Record<string, TavilyDatasheetCitation[]> = {
   'IRF540N': [
     {
       component: 'IRF540N',
-      title: 'Vishay Siliconix IRF540N Power MOSFET Datasheet Rev. C',
-      url: 'https://www.vishay.com/docs/91021/91021.pdf',
+      title: 'Vishay Siliconix IRF540 Power MOSFET Datasheet (Doc #91021)',
+      url: 'https://www.vishay.com/docs/91021/irf540.pdf',
       snippet:
-        'Maximum junction temperature Tj(max) = 175C. Linear derating factor = 0.73 W/C above 25C. Rds(on) doubles from 44mOhm at 25C to 88mOhm at 100C. Exceeding 105C continuous junction temperature triggers thermal runaway under high PWM duty cycle. Immediate duty cycle derating to <50% required to restore safe operating area (SOA).',
+        'Maximum junction temperature Tj(max) = 175C. Linear derating factor = 1.0 W/C above 25C. Rds(on) = 0.077 Ohm max. Operating with junction temperature exceeding 85C design derating margin triggers thermal runaway risk under elevated PWM duty cycles. Immediate duty cycle derating to <50% required to restore safe operating area (SOA).',
       limits: {
-        maxTempC: 105,
+        maxTempC: 85, // 85C continuous design derating margin (datasheet Tj max 175C)
         maxVoltageV: 100,
-        maxCurrentMa: 33000,
-        safeOperatingArea: 'DC limit 110W at 25C, derated to 40W at 85C case',
+        maxCurrentMa: 28000,
+        safeOperatingArea: 'Design margin <= 85C (datasheet Tj max 175C)',
         recommendedMitigation: 'Derate PWM duty cycle to <= 110 (43%) and engage current limit',
-      },
-    },
-    {
-      component: 'IRF540N',
-      title: 'Infineon Application Note AN-940: Safe Operating Area for Power MOSFETs',
-      url: 'https://www.infineon.com/application-notes/an-940.pdf',
-      snippet:
-        'Thermal instability occurs when the rate of heat generation exceeds thermal dissipation capacity. In inductive switching applications, reduce switching frequency or throttle gate drive duty cycle to prevent thermal runaway destruction.',
-      limits: {
-        maxTempC: 105,
-        safeOperatingArea: 'Tj <= 105C for high-reliability continuous operation',
-        recommendedMitigation: 'SET_PWM duty cycle derating with passive heatsink stabilization',
       },
     },
   ],
@@ -36,13 +24,13 @@ const CURATED_DATASHEET_SPECS: Record<string, TavilyDatasheetCitation[]> = {
       title: 'Texas Instruments DRV8833 Dual H-Bridge Motor Driver Datasheet (SLVSB43)',
       url: 'https://www.ti.com/lit/ds/symlink/drv8833.pdf',
       snippet:
-        'Supply voltage VM operating range 2.7V to 10.8V. Undervoltage lockout (UVLO) trip threshold is typical 2.5V, maximum 2.7V. Overcurrent trip threshold is 2A typical per bridge. When supply voltage drops below 9V under motor stall, inductive kickback causes transient current surges up to 1.6A.',
+        'Supply voltage VM operating range 2.7V to 10.8V. VM undervoltage lockout (UVLO) is 2.6V on falling VM with 90mV hysteresis. Overcurrent trip threshold is 2A typical per bridge. When supply voltage drops below the 9V system brownout threshold under motor stall, inductive kickback causes transient current surges up to 1.6A.',
       limits: {
         maxVoltageV: 10.8,
         maxCurrentMa: 1500,
         maxTempC: 95,
-        safeOperatingArea: 'VM >= 8.5V to prevent erratic UVLO cycling',
-        recommendedMitigation: 'ENGAGE_CURRENT_LIMIT to 600mA and derate PWM to prevent UVLO brownout',
+        safeOperatingArea: 'System brownout threshold >= 8.5V (DRV8833 VM UVLO 2.6V falling)',
+        recommendedMitigation: 'ENGAGE_CURRENT_LIMIT to 600mA and derate PWM to prevent supply brownout',
       },
     },
   ],
@@ -112,7 +100,7 @@ export async function searchHardwareDatasheets(
             component: normalizedComponent,
             title: res.title || `${normalizedComponent} Specification`,
             url: res.url || 'https://www.alldatasheet.com',
-            snippet: res.content.slice(0, 400),
+            snippet: res.content.slice(0, 1000),
             limits: {
               maxTempC: bomSpec.criticalLimits.maxTempC,
               maxVoltageV: bomSpec.criticalLimits.maxVoltageV,
@@ -139,8 +127,8 @@ export async function searchHardwareDatasheets(
     {
       component: targetComponent || 'IRF540N',
       title: `${targetComponent || 'Power Stage'} Safe Operating Limits Specification`,
-      url: 'https://www.vishay.com/docs/91021/91021.pdf',
-      snippet: `Hardware limits for ${targetComponent || 'MOSFET stage'}: Maintain junction temperature below 85C for continuous operation, derate PWM duty cycle on thermal or harmonic elevation.`,
+      url: 'https://www.vishay.com/docs/91021/irf540.pdf',
+      snippet: `Hardware limits for ${targetComponent || 'MOSFET stage'}: Maintain junction temperature below 85C design derating margin for continuous operation, derate PWM duty cycle on thermal or harmonic elevation.`,
       limits: {
         maxTempC: 85,
         maxVoltageV: 16.0,

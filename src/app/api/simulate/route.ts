@@ -22,6 +22,11 @@ export async function POST(req: NextRequest) {
       candidateCommand
     );
 
+    const limits = candidateCommand.extractedLimits;
+    const limitTag = limits?.limitSource
+      ? ` [Bound: ${limits.maxSafeTempC ?? 85}C, ${limits.maxSafeCurrentMa ?? 1200}mA from ${limits.limitSource.slice(0, 32)}]`
+      : '';
+
     // Record simulation verification trace
     const simTrace: AgentTraceEvent = {
       id: `TRC-SIM-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -31,7 +36,7 @@ export async function POST(req: NextRequest) {
       latencyMs: simulation.executionTimeMs,
       description: `State-space verifier: ${
         simulation.verified ? 'PASS' : 'FAIL'
-      } via ${backend} (Pred Temp: ${simulation.predictedTempC}C, Vib: ${
+      } via ${backend}${limitTag} (Pred Temp: ${simulation.predictedTempC}C, Vib: ${
         simulation.predictedVibrationG
       }g, Current: ${simulation.predictedCurrentMa}mA, Margin: ${
         simulation.safetyMarginPercent
@@ -43,6 +48,7 @@ export async function POST(req: NextRequest) {
         predictedCurrentMa: simulation.predictedCurrentMa,
         safetyMarginPercent: simulation.safetyMarginPercent,
         backend,
+        groundedLimits: limits,
         jobId,
         jobState,
       },

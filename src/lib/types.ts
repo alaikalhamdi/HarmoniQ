@@ -50,6 +50,13 @@ export interface TavilyDatasheetCitation {
   };
 }
 
+export interface SafetyLimitOverrides {
+  maxSafeTempC?: number;
+  maxSafeCurrentMa?: number;
+  maxSafeVibrationG?: number;
+  limitSource?: string;
+}
+
 export interface ActuationCommand {
   commandId: string;
   targetDeviceId: string;
@@ -62,6 +69,7 @@ export interface ActuationCommand {
     currentLimitMa?: number;
     reason: string;
   };
+  extractedLimits?: SafetyLimitOverrides;
   verifiedBySimulation: boolean;
   modelChainUsed: string[];
   timestamp: number;
@@ -74,6 +82,7 @@ export interface DiagnosisReport {
   justification: string;
   modelUsed: string;
   citations: TavilyDatasheetCitation[];
+  extractedLimits?: SafetyLimitOverrides;
   recommendedCommand: ActuationCommand;
   diagnosisLatencyMs: number;
 }
@@ -146,9 +155,9 @@ export const RIG_HARDWARE_BOM: Record<string, RigHardwareComponent> = {
   'IRF540N': {
     partNumber: 'IRF540NPBF',
     category: 'Power Switching N-MOSFET',
-    nominalSpecs: '100V Vds, 33A Id, 44mOhm Rds(on), TO-220AB package',
+    nominalSpecs: '100V Vds, 33A Id (28A IRF540), 44mOhm Rds(on), TO-220AB package, Tj max 175C',
     criticalLimits: {
-      maxTempC: 105,
+      maxTempC: 85, // 85C continuous design derating margin (datasheet Tj max 175C)
       maxVoltageV: 100,
       maxCurrentMa: 33000,
       nominalFftPeakHz: 120,
@@ -161,11 +170,11 @@ export const RIG_HARDWARE_BOM: Record<string, RigHardwareComponent> = {
     nominalSpecs: '2.7V - 10.8V operating rail, 1.5A RMS / 2A peak per bridge, current regulation',
     criticalLimits: {
       maxTempC: 95,
-      maxVoltageV: 11.5,
+      maxVoltageV: 10.8,
       maxCurrentMa: 2000,
       nominalFftPeakHz: 120,
     },
-    typicalFailureModes: ['Undervoltage lockout (UVLO)', 'Overcurrent shutdown', 'Cross-conduction ripple'],
+    typicalFailureModes: ['Supply rail brownout sag', 'Overcurrent shutdown', 'Cross-conduction ripple'],
   },
   'INA219': {
     partNumber: 'INA219BIDR',
